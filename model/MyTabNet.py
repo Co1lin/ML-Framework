@@ -3,8 +3,21 @@ import torch
 from torch import nn
 from torch import optim
 import pytorch_lightning as pl
-from pytorch_tabnet.tab_network import TabNet
 from torch.nn.utils import clip_grad_norm_
+
+
+class NaiveModel(nn.Module):
+    def __init__(self, input_dim, output_dim, hidden_dim):
+        super().__init__()
+        self.layers = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.SELU(),
+            nn.Linear(hidden_dim, output_dim),
+            nn.SELU(),
+        )
+    
+    def forward(self, x):
+        return self.layers(x)
 
 class MyTabNet(pl.LightningModule):
 
@@ -15,53 +28,32 @@ class MyTabNet(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.cfg = self.hparams.config.task
-        self.automatic_optimization = False # activates manual optimization!
+        # self.automatic_optimization = False # activates manual optimization!
+        # for manual scheduler stepping forward
+        # self._last_sch_mon_val: torch.Tensor = None
 
         if hasattr(self.cfg, 'optimizer'):
-            self.clip_value = self.cfg.optimizer.clip_value
+            self.clip_value = self.cfg.optimizer.grad_clip_value
 
         model_cfg = self.cfg.model
-        self.net = TabNet(
-            model_cfg.input_dim,
-            model_cfg.output_dim,
-            n_d=model_cfg.n_d,
-            n_a=model_cfg.n_a,
-            n_steps=model_cfg.n_steps,
-            gamma=model_cfg.gamma,
-            cat_idxs=model_cfg.cat_idxs,
-            cat_dims=model_cfg.cat_dims,
-            cat_emb_dim=model_cfg.cat_emb_dim,
-            n_independent=model_cfg.n_independent,
-            n_shared=model_cfg.n_shared,
-            epsilon=model_cfg.epsilon,
-            virtual_batch_size=model_cfg.virtual_batch_size,
-            momentum=model_cfg.momentum,
-            mask_type=model_cfg.mask_type,
-        )
+        self.net = NaiveModel(model_cfg.input_dim, model_cfg.output_dim, model_cfg.hidden_dim)
 
         # freeze
         if hasattr(self.cfg, 'freeze'):
             for m in self.cfg.freeze:
                 module = getattr(self, m)
                 module.freeze()
-
-        # for manual scheduler stepping forward
-        self._last_sch_mon_val: torch.Tensor = None
         
-    
-    def forward(self, batch):
-        x = batch
-        return self.net(x)
+    def forward(self, x_batch):
+        return self.net(x_batch)
 
     def _common_step(self, batch) -> Dict:
-        x, y_gt = batch[0], batch[1]
-        y_pred, M_loss = self.forward(x)
+        x, y_gt = batch['x'], batch['y_label']
+        y_pred = self.forward(x)
         
         out = {}
-        out['loss'] = self._compute_loss(y_pred, y_gt) - self.lambda_sparse * M_loss
-        out['M_loss'] = M_loss.detach()
+        out['loss'] = self._compute_loss(y_pred, y_gt)
         out['y_pred'] = y_pred.detach()
-        out['data'] = batch[2]
         
         return out
     

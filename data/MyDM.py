@@ -14,13 +14,12 @@ class MyDM(pl.LightningDataModule):
 
     def _get_dataset(self, mode: str):
         return MyDS(
-            self.data[self.split_info[mode]],
-            self.label[self.split_info[mode]],
-            self.info[self.split_info[mode]],
+            self.data,
+            self.split_info[mode]
         )
 
     def _load_data(self):
-        ds_path = os.path.join('dataset')
+        ds_path = os.path.join(self.cfg.data_dir)
         files = os.listdir(ds_path)
         
         # load data as a dict
@@ -35,7 +34,7 @@ class MyDM(pl.LightningDataModule):
             split_file = os.path.join(ds_path, split_file[0])
             split_info = dict(np.load(split_file, allow_pickle=True))
         else:
-            num_entries = data['factors'].shape[0]
+            num_entries = data['x'].shape[0]
             perm = np.random.permutation(num_entries)
             sp = [0.8, 0.1, 0.1]
             sp = [int(sp[0]*num_entries), int((sp[0] + sp[1])*num_entries)]
@@ -59,11 +58,9 @@ class MyDM(pl.LightningDataModule):
             'test': np.arange(tot_num*0.9, tot_num, dtype=np.integer),
         }
         '''
-
-        # save data, label, info as torch tensors
-        self.data = torch.from_numpy(data['factors']).float()
-        self.label = torch.from_numpy(data['ret']).float()
-        self.info = data['info']
+        # save x, y_label, info as torch tensors
+        self.data = data
+        self.split_info = split_info
 
     def train_dataloader(self):
         return self._get_dataloader('train')
@@ -90,7 +87,7 @@ class MyDM(pl.LightningDataModule):
         
         # Ref: https://pytorch.org/docs/master/notes/randomness.html#dataloader
         g = torch.Generator()
-        g.manual_seed(0)
+        g.manual_seed(self.cfg.seed)
 
         dataset = self._get_dataset(mode)
 
@@ -110,18 +107,17 @@ class MyDM(pl.LightningDataModule):
 
 class MyDS(Dataset):
 
-    def __init__(self, data, label, info):
+    def __init__(self, data, indices):
         self.data = data
-        self.label = label
-        self.info = info
+        self.indices = indices
         
     def __len__(self):
-        return self.data.shape[0]
+        return self.data['x'].shape[0]
 
     def __getitem__(self, index):
-        return (
-            self.data[index],
-            self.label[index],
-            self.info[index],
-        )
-
+        x = torch.from_numpy(self.data['x'][self.indices[index]])
+        y_label = torch.from_numpy(self.data['y_label'][self.indices[index]])
+        return {
+            'x': x,
+            'y_label': y_label,
+        }

@@ -31,38 +31,25 @@ def train(cfg):
         ModelCheckpoint(
             monitor=cfg.task.optimizer.monitor_val,
             dirpath=output_dir,
-            filename=f'{cfg.task.name}-' + '{epoch}-{val_MAE:.2f}-best',
+            filename=f'{cfg.task.name}-' + '{epoch}-{val_metric:.2f}-best',
             save_top_k=3,
             save_last=True,
             mode='min',
         ),
     ]
-    if not cfg.task.resume:
-        trainer = pl.Trainer(
-            max_epochs=cfg.task.epochs,
-            gpus=cfg.gpus, 
-            logger=wandb_logger, 
-            strategy='ddp', 
-            log_every_n_steps=10, 
-            callbacks=ckpt_callback_list,
-            sync_batchnorm=True,
-            # val_check_interval=cfg.val_check_interval,
-            #plugins=DDPPlugin(find_unused_parameters=False),
-        )
-    else:
-        trainer = pl.Trainer(
-            resume_from_checkpoint=cfg.weight,
-            max_epochs=cfg.task.epochs,
-            gpus=cfg.gpus,
-            logger=wandb_logger, 
-            strategy='ddp', 
-            log_every_n_steps=10, 
-            callbacks=ckpt_callback_list,
-            sync_batchnorm=True,
-            # val_check_interval=cfg.val_check_interval,
-            #plugins=DDPPlugin(find_unused_parameters=False),
-        )
-    # end if
+    trainer = pl.Trainer(
+        resume_from_checkpoint=cfg.weight if cfg.task.resume else None,
+        max_epochs=cfg.task.epochs,
+        gpus=cfg.gpus,
+        logger=wandb_logger, 
+        strategy='ddp', 
+        log_every_n_steps=10, 
+        callbacks=ckpt_callback_list,
+        sync_batchnorm=True,
+        grad_clip_value=cfg.task.optimizer.grad_clip_value,
+        # val_check_interval=cfg.val_check_interval,
+        # plugins=DDPPlugin(find_unused_parameters=False),
+    )
     trainer.fit(model, datamodule=datamodule)
 
 def test(cfg):
@@ -85,9 +72,9 @@ def seed_all(seed: int):
 @hydra.main(config_path='config', config_name='config')
 def main(cfg):
     # increase ulimit
-    import resource
-    rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
-    resource.setrlimit(resource.RLIMIT_NOFILE, (16384, rlimit[1]))
+    # import resource
+    # rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
+    # resource.setrlimit(resource.RLIMIT_NOFILE, (16384, rlimit[1]))
 
     global model
     global datamodule
@@ -128,4 +115,4 @@ def main(cfg):
 if __name__ == '__main__':
     main()
 
-# python main.py task=train_comp gpus='[0,1]' 'weight=""'
+# python main.py task=train gpus='[0,1]' 'weight=""'
