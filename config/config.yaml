@@ -1,0 +1,13 @@
+defaults:
+  - task: train
+
+gpus: [0]
+num_workers: 16
+seed: 10
+
+wandb:
+  en: true
+  proj: TabNet
+  offline: false
+
+weight: ''
